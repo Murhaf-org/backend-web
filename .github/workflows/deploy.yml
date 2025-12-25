@@ -1,0 +1,33 @@
+name: Deploy Node.js App to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Login to DockerHub
+        run: docker login -u ${{ secrets.DOCKERHUB_USER }} -p ${{ secrets.DOCKERHUB_PASS }}
+
+      - name: Build Docker image
+        run: docker build -t ${{ secrets.DOCKERHUB_USER }}/${{ secrets.IMAGE_NAME }}:latest .
+
+      - name: Push Docker image
+        run: docker push ${{ secrets.DOCKERHUB_USER }}/${{ secrets.IMAGE_NAME }}:latest
+
+      - name: Deploy to backend-az server
+        run: |
+          ssh -o StrictHostKeyChecking=no ec2-user@${{ secrets.BACKEND_IP }} "
+            docker login -u ${{ secrets.DOCKERHUB_USER }} -p ${{ secrets.DOCKERHUB_PASS }} &&
+            docker pull ${{ secrets.DOCKERHUB_USER }}/${{ secrets.IMAGE_NAME }}:latest &&
+            docker stop ${{ secrets.CONTAINER_NAME }} || true &&
+            docker rm ${{ secrets.CONTAINER_NAME }} || true &&
+            docker run -d --name ${{ secrets.CONTAINER_NAME }} -p 80:${{ secrets.CONTAINER_PORT }} ${{ secrets.DOCKERHUB_USER }}/${{ secrets.IMAGE_NAME }}:latest
+          "
